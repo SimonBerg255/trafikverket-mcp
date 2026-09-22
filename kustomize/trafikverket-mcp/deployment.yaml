@@ -19,8 +19,6 @@ spec:
           envFrom:
             - secretRef: { name: trafikverket-mcp-secrets }
           env:
-            - { name: MCP_SERVER_JWT_ISSUER, value: "intric-mcp" }
-            - { name: MCP_SERVER_JWT_AUDIENCE, value: "intric-client" }
             - { name: ALLOWED_IPS, value: "*" }
           readinessProbe:
             httpGet: { path: /health, port: 8000 }

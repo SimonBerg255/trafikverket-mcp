@@ -6,7 +6,7 @@ MCP server that plugs straight into **Intric**.
 
 Ported and extended from [hniska/trafikverket-mcp](https://github.com/hniska/trafikverket-mcp)
 (TypeScript, stdio) to the Intric MCP conventions: Python + FastMCP, HTTP transport at `/mcp`,
-HS256 JWT auth, IP allowlist, `/health`, tools that run without confirmation prompts.
+optional API-key auth, IP allowlist, `/health`, tools that run without confirmation prompts.
 
 ## Tools
 
@@ -34,8 +34,7 @@ and turns API failures into a plain `Error: …` message.
 python3.12 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# 1) put your free Trafikverket key in TRAFIKVERKET_API_KEY  (https://data.trafikverket.se/)
-# 2) MCP_SERVER_JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+# put your free Trafikverket key in TRAFIKVERKET_API_KEY  (https://data.trafikverket.se/)
 
 python3 test_tools.py            # live verification against Trafikverket – must print ALL PASSED
 pytest -q                        # offline unit tests
@@ -46,12 +45,17 @@ curl http://localhost:8000/health   # {"status":"ok",...}
 
 ## Connect to Intric
 
-1. Deploy (Kubernetes via `kustomize/trafikverket-mcp/`, Railway via `railway.json`, or the `Dockerfile`).
-2. Mint a token: `python3 generate_token.py` (uses `MCP_SERVER_JWT_SECRET`, `iss=intric-mcp`, `aud=intric-client`).
-3. In Intric: **Settings → MCP servers → Add**
+1. Deploy (Kubernetes via `kustomize/trafikverket-mcp/`, Railway via `railway.json`, or the `Dockerfile`)
+   with `TRAFIKVERKET_API_KEY` set.
+2. In Intric: **Settings → MCP servers → Add**
    * URL: `https://<your-public-host>/mcp`  (the path **must** end with `/mcp`)
-   * Api Key: the JWT from step 2
-4. Ask: *"Hur är vädret på E4 vid Uppsala just nu?"* – `get_weather_station` should run without a prompt.
+   * Api Key: leave empty – unless you set `MCP_API_KEY` on the server, in which case paste that same value.
+3. Ask: *"Hur är vädret på E4 vid Uppsala just nu?"* – `get_weather_station` should run without a prompt.
+
+**Access control.** By default the server is open: anyone who knows the URL can call it (it only
+exposes public Trafikverket data, but calls count against your Trafikverket key). To lock it, set
+`MCP_API_KEY` to any string on the server and enter the same string as the Api Key in Intric.
+`ALLOWED_IPS` can additionally restrict callers by IP.
 
 For local testing expose the port with e.g. `ngrok http 8000` and use `https://<ngrok-host>/mcp`.
 
@@ -60,21 +64,18 @@ For local testing expose the port with e.g. `ngrok http 8000` and use `https://<
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `TRAFIKVERKET_API_KEY` | yes | – | Free key from data.trafikverket.se |
-| `MCP_SERVER_JWT_SECRET` | yes | – | HS256 shared secret, ≥ 32 chars |
-| `MCP_SERVER_JWT_ISSUER` | no | `intric-mcp` | JWT `iss` claim |
-| `MCP_SERVER_JWT_AUDIENCE` | no | `intric-client` | JWT `aud` claim |
+| `MCP_API_KEY` | no | – (open) | If set, Intric must send it as the Api Key |
 | `ALLOWED_IPS` | no | `*` | Comma-separated allowlist (honours `X-Forwarded-For`) |
 | `MCP_ICON_URL` | no | GitHub raw URL of `icon.png` | Icon shown in Intric – must be an absolute public URL |
 
 ## Project layout
 
 ```
-server.py                 FastMCP app: JWT auth, IP allowlist, metadata, /health, /mcp
+server.py                 FastMCP app: optional API key, IP allowlist, metadata, /health, /mcp
 tools_trafikverket.py     12 tool implementations (formatted text, row caps, decision-tree docstrings)
 trafikverket_client.py    XML query builder + JSON response handling + TTL cache + geo helpers
 test_tools.py             Live verification runner (exit 0 = done)
 tests/test_unit.py        Offline pytest suite
-generate_token.py         Mint the JWT for Intric's Api Key field
 kustomize/                Deployment / Service / Ingress / secrets template for the mcp namespace
 Dockerfile, railway.json, Procfile, runtime.txt
 CATALOGUE.md              Entry for the mcp-collection catalogue

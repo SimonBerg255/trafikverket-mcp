@@ -267,7 +267,6 @@ def test_camera_image_rejects_foreign_url():
 
 
 def test_server_registers_all_tools_without_permission_prompt():
-    os.environ.setdefault("MCP_SERVER_JWT_SECRET", "x" * 64)
     import server  # noqa: F401
 
     async def names():
@@ -283,7 +282,6 @@ def test_server_registers_all_tools_without_permission_prompt():
 
 def test_camera_image_through_mcp_layer(monkeypatch):
     """A JPEG fetched by get_camera_image must reach the client as an MCP image content block."""
-    os.environ.setdefault("MCP_SERVER_JWT_SECRET", "x" * 64)
     import server
 
     jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 2000 + b"\xff\xd9"
@@ -318,3 +316,21 @@ def test_camera_image_through_mcp_layer(monkeypatch):
     assert block.type == "image" and block.mimeType == "image/jpeg"
     import base64
     assert base64.b64decode(block.data) == jpeg
+
+
+def test_server_open_by_default_and_locked_with_api_key(monkeypatch):
+    import importlib
+    import server
+
+    monkeypatch.delenv("MCP_API_KEY", raising=False)
+    importlib.reload(server)
+    assert server.auth is None
+
+    monkeypatch.setenv("MCP_API_KEY", "my-shared-key")
+    importlib.reload(server)
+    assert server.auth is not None
+    tokens = server.auth.tokens
+    assert "my-shared-key" in tokens
+
+    monkeypatch.delenv("MCP_API_KEY", raising=False)
+    importlib.reload(server)

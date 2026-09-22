@@ -3,10 +3,10 @@
 | Field | Value |
 |---|---|
 | Purpose | Live Swedish road weather, traffic cameras, traffic situations, traffic flow and road conditions from Trafikverket Open Data |
-| Auth | `jwt` – HS256 shared secret (`MCP_SERVER_JWT_SECRET`, ≥32 chars), `iss=intric-mcp`, `aud=intric-client` |
+| Auth | `api_key` (optional) – static Bearer via `MCP_API_KEY`; open server when unset |
 | Ingress path | `/trafikverket/mcp` → app serves `/mcp` (prefix stripped by ingress rewrite) |
 | Health | `GET /health` → `{"status":"ok"}` |
-| Env vars | `TRAFIKVERKET_API_KEY` (secret), `MCP_SERVER_JWT_SECRET` (secret), `MCP_SERVER_JWT_ISSUER`, `MCP_SERVER_JWT_AUDIENCE`, `ALLOWED_IPS`, `MCP_ICON_URL` |
+| Env vars | `TRAFIKVERKET_API_KEY` (secret), `MCP_API_KEY` (optional secret), `ALLOWED_IPS`, `MCP_ICON_URL` |
 | Tools (12) | get_weather_station, list_weather_stations, get_weather_stations_near_location, get_weather_observations, get_cameras, get_cameras_near_location, get_camera_image, get_traffic_situations, get_traffic_situation_summary, get_traffic_flow, get_road_conditions, list_counties |
 | Resources | none |
 | Unit tests | `tests/test_unit.py` (offline), `test_tools.py` (live) |

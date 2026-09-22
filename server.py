@@ -8,17 +8,18 @@ Health:         http://<host>:8000/health
 
 Environment (.env):
     TRAFIKVERKET_API_KEY      – free key from https://data.trafikverket.se/   (required)
-    MCP_SERVER_JWT_SECRET     – HS256 shared secret, min 32 chars              (required)
-    MCP_SERVER_JWT_ISSUER     – default "intric-mcp"
-    MCP_SERVER_JWT_AUDIENCE   – default "intric-client"
+    MCP_API_KEY               – optional. If set, Intric must send it as the Api Key (Bearer token).
+                                If unset the server is open (no auth).
     ALLOWED_IPS               – comma-separated allowlist, default "*"
 """
+
+import logging
 
 import os
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
-from fastmcp.server.auth.providers.jwt import JWTVerifier
+from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 from mcp.server.fastmcp import Icon
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -44,25 +45,21 @@ from tools_trafikverket import (  # noqa: E402
 
 ####### CONFIG VALIDATION #######
 
-_jwt_secret = os.getenv("MCP_SERVER_JWT_SECRET", "")
-if len(_jwt_secret) < 32:
-    raise RuntimeError(
-        "MCP_SERVER_JWT_SECRET must be set and at least 32 characters. "
-        "Generate one with: python3 -c \"import secrets; print(secrets.token_hex(32))\""
-    )
 if not os.getenv("TRAFIKVERKET_API_KEY"):
     raise RuntimeError(
         "TRAFIKVERKET_API_KEY is not set. Register for a free key at https://data.trafikverket.se/"
     )
 
-####### AUTH – HS256 JWT (Intric 'Api Key' field) #######
+####### AUTH – optional static API key (Intric 'Api Key' field) #######
 
-verifier = JWTVerifier(
-    public_key=_jwt_secret,
-    issuer=os.getenv("MCP_SERVER_JWT_ISSUER", "intric-mcp"),
-    audience=os.getenv("MCP_SERVER_JWT_AUDIENCE", "intric-client"),
-    algorithm="HS256",
-)
+log = logging.getLogger("trafikverket-mcp")
+_api_key = os.getenv("MCP_API_KEY", "").strip()
+if _api_key:
+    # Intric sends the value as "Authorization: Bearer <MCP_API_KEY>". No token generation needed.
+    auth = StaticTokenVerifier(tokens={_api_key: {"client_id": "intric", "scopes": []}})
+else:
+    auth = None
+    log.warning("MCP_API_KEY not set – server runs WITHOUT authentication (set ALLOWED_IPS to restrict access)")
 
 ####### CUSTOM MIDDLEWARE – IP allowlist #######
 
@@ -172,7 +169,7 @@ mcp = FastMCP(
     version=VERSION,
     website_url=WEBSITE_URL,
     icons=[icon],
-    auth=verifier,
+    auth=auth,
 )
 
 ####### TOOLS – all run without user confirmation in Intric #######
