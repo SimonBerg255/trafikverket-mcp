@@ -40,7 +40,7 @@ cp .env.example .env
 python3 test_tools.py            # live verification against Trafikverket – must print ALL PASSED
 pytest -q                        # offline unit tests
 
-uvicorn server:app --host 0.0.0.0 --port 8000
+python server.py                 # or: uvicorn server:app --host 0.0.0.0 --port 8000
 curl http://localhost:8000/health   # {"status":"ok",...}
 ```
 

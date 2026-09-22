@@ -2,7 +2,8 @@
 server.py – Trafikverket Open Data MCP server for Intric.
 
 Run:
-    uvicorn server:app --host 0.0.0.0 --port 8000
+    python server.py                                   (reads PORT env, default 8000)
+    uvicorn server:app --host 0.0.0.0 --port 8000      (equivalent)
 MCP endpoint:   http://<host>:8000/mcp      (paste "<public-url>/mcp" into Intric)
 Health:         http://<host>:8000/health
 
@@ -195,3 +196,11 @@ async def health(request: Request) -> JSONResponse:
 ####### ASGI APP – MCP endpoint at /mcp #######
 
 app = mcp.http_app(middleware=middleware)
+
+
+####### DIRECT ENTRY POINT – `python server.py` (reads PORT itself, no shell expansion needed) #######
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))
