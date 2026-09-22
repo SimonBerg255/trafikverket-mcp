@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trafikverket-mcp
+  labels: { app: trafikverket-mcp }
+spec:
+  replicas: 1   # MCP streamable-HTTP sessions are stateful; keep 1 replica or add sticky sessions
+  selector:
+    matchLabels: { app: trafikverket-mcp }
+  template:
+    metadata:
+      labels: { app: trafikverket-mcp }
+    spec:
+      containers:
+        - name: trafikverket-mcp
+          image: ghcr.io/simonberg255/trafikverket-mcp:latest   # adjust to your registry
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef: { name: trafikverket-mcp-secrets }
+          env:
+            - { name: MCP_SERVER_JWT_ISSUER, value: "intric-mcp" }
+            - { name: MCP_SERVER_JWT_AUDIENCE, value: "intric-client" }
+            - { name: ALLOWED_IPS, value: "*" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 3
+          livenessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
