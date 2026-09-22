@@ -340,6 +340,8 @@ def test_bearer_header_parsing(monkeypatch):
     assert tc._bearer_from_request() == "abc123"
     monkeypatch.setattr(deps, "get_http_headers", lambda include=None, include_all=False: {"authorization": "rawkey"})
     assert tc._bearer_from_request() == "rawkey"
+    monkeypatch.setattr(deps, "get_http_headers", lambda include=None, include_all=False: {"x-api-key": "xk"})
+    assert tc._bearer_from_request() == "xk"
     monkeypatch.setattr(deps, "get_http_headers", lambda include=None, include_all=False: {})
     assert tc._bearer_from_request() is None
 

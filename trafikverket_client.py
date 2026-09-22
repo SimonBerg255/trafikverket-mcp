@@ -86,18 +86,21 @@ NO_KEY_MESSAGE = (
 
 
 def _bearer_from_request() -> str | None:
-    """Read the Bearer token Intric forwards on the current MCP request, if any."""
+    """Read the API key Intric forwards on the current MCP request, if any.
+
+    Accepts "Authorization: Bearer <key>" (what Intric's api_key mode sends), a raw
+    Authorization value, or an X-API-Key / Api-Key header."""
     try:
         from fastmcp.server.dependencies import get_http_headers
 
-        headers = get_http_headers(include={"authorization"})
+        headers = get_http_headers(include={"authorization", "x-api-key", "api-key"})
     except Exception:  # noqa: BLE001 – no request context (tests, CLI)
         return None
     value = (headers.get("authorization") or "").strip()
-    if not value:
-        return None
     if value.lower().startswith("bearer "):
         value = value[7:].strip()
+    if not value:
+        value = (headers.get("x-api-key") or headers.get("api-key") or "").strip()
     return value or None
 
 

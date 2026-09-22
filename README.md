@@ -46,8 +46,7 @@ curl http://localhost:8000/health   # {"status":"ok",...}
 
 ## Connect to Intric
 
-1. Deploy (Kubernetes via `kustomize/trafikverket-mcp/`, Railway via `railway.json`, or the `Dockerfile`).
-   **No environment variables are required.**
+1. Deploy – see *Deploying* below. **No environment variables are required.**
 2. In Intric: **Settings → MCP servers → Add**
    * URL: `https://<your-public-host>/mcp`  (the path **must** end with `/mcp`)
    * Auth mode: **API key**
@@ -59,6 +58,20 @@ call. The server forwards that key to Trafikverket, so the Trafikverket key *is*
 nothing secret has to be stored on the server. Anyone calling the server without a valid Trafikverket
 key gets a clear error and no data. If you prefer a shared key for all callers, set
 `TRAFIKVERKET_API_KEY` on the server and use auth mode **None** in Intric instead.
+
+## Deploying
+
+**Railway (simplest).** New Project → Deploy from GitHub repo → this repo. Railway builds it with
+Railpack (there is intentionally no `Dockerfile` in the repo root) and the start command is
+`uvicorn server:app --host 0.0.0.0 --port $PORT` (from the `Procfile`, or set the same in the service's
+Start Command). Generate a domain; the MCP URL is `https://<domain>/mcp`. No variables needed.
+
+Do **not** add a root-level Dockerfile for Railway: Railway then executes the dashboard start command
+without a shell, `$PORT` is passed literally, and the service crash-loops with
+`Invalid value for '--port': '$PORT'`.
+
+**Kubernetes / Docker.** `docker build -f deploy/Dockerfile -t trafikverket-mcp .` and apply
+`kustomize/trafikverket-mcp/`. The image entry point is `python server.py`, which reads `PORT`.
 
 ## Environment variables
 
@@ -77,7 +90,8 @@ trafikverket_client.py    XML query builder + JSON response handling + TTL cache
 test_tools.py             Live verification runner (exit 0 = done)
 tests/test_unit.py        Offline pytest suite
 kustomize/                Deployment / Service / Ingress / secrets template for the mcp namespace
-Dockerfile, railway.json, Procfile, runtime.txt
+deploy/Dockerfile         Container image for Kubernetes (kept out of the root on purpose, see Deploying)
+Procfile, runtime.txt     Railway / Railpack start command and Python version
 CATALOGUE.md              Entry for the mcp-collection catalogue
 ```
 
