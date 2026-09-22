@@ -6,4 +6,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY *.py ./
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"
-CMD ["python", "server.py"]
+# ENTRYPOINT (not CMD) so that a platform "custom start command" cannot replace how the app starts:
+# Railway runs custom start commands without a shell, so "uvicorn --port $PORT" arrives unexpanded.
+# Any extra arguments are ignored by server.py, which reads PORT from the environment itself.
+ENTRYPOINT ["python", "server.py"]
