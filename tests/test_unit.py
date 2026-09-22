@@ -318,19 +318,36 @@ def test_camera_image_through_mcp_layer(monkeypatch):
     assert base64.b64decode(block.data) == jpeg
 
 
-def test_server_open_by_default_and_locked_with_api_key(monkeypatch):
+def test_resolve_api_key_prefers_bearer_then_env(monkeypatch):
+    monkeypatch.setenv("TRAFIKVERKET_API_KEY", "env-key")
+    monkeypatch.setattr(tc, "_bearer_from_request", lambda: None)
+    assert tc.resolve_api_key() == "env-key"
+    monkeypatch.setattr(tc, "_bearer_from_request", lambda: "intric-key")
+    assert tc.resolve_api_key() == "intric-key"
+    monkeypatch.setattr(tc, "_bearer_from_request", lambda: None)
+    monkeypatch.setenv("TRAFIKVERKET_API_KEY", "")
+    with pytest.raises(tc.TrafikverketError, match="No Trafikverket API key"):
+        tc.resolve_api_key()
+    monkeypatch.setenv("TRAFIKVERKET_API_KEY", "REPLACE_WITH_YOUR_KEY")
+    with pytest.raises(tc.TrafikverketError):
+        tc.resolve_api_key()
+
+
+def test_bearer_header_parsing(monkeypatch):
+    import fastmcp.server.dependencies as deps
+
+    monkeypatch.setattr(deps, "get_http_headers", lambda include=None, include_all=False: {"authorization": "Bearer  abc123 "})
+    assert tc._bearer_from_request() == "abc123"
+    monkeypatch.setattr(deps, "get_http_headers", lambda include=None, include_all=False: {"authorization": "rawkey"})
+    assert tc._bearer_from_request() == "rawkey"
+    monkeypatch.setattr(deps, "get_http_headers", lambda include=None, include_all=False: {})
+    assert tc._bearer_from_request() is None
+
+
+def test_server_starts_without_any_env(monkeypatch):
     import importlib
     import server
 
-    monkeypatch.delenv("MCP_API_KEY", raising=False)
-    importlib.reload(server)
-    assert server.auth is None
-
-    monkeypatch.setenv("MCP_API_KEY", "my-shared-key")
-    importlib.reload(server)
-    assert server.auth is not None
-    tokens = server.auth.tokens
-    assert "my-shared-key" in tokens
-
-    monkeypatch.delenv("MCP_API_KEY", raising=False)
-    importlib.reload(server)
+    monkeypatch.delenv("TRAFIKVERKET_API_KEY", raising=False)
+    importlib.reload(server)  # must not raise
+    assert server.app is not None

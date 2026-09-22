@@ -9,13 +9,16 @@ Response envelope (verified with a live probe):
 Error envelope (HTTP 200 *or* 4xx – always check RESULT[0].ERROR):
     {"RESPONSE": {"RESULT": [{"ERROR": {"SOURCE": "Security", "MESSAGE": "Invalid authentication"}}]}}
 
-Environment:
-    TRAFIKVERKET_API_KEY  – free key from https://data.trafikverket.se/ (required)
+Trafikverket key resolution (per request):
+    1. "Authorization: Bearer <key>" header on the MCP request – this is what Intric sends when the
+       server is registered with auth mode "API key" and the Trafikverket key is pasted in that field.
+    2. TRAFIKVERKET_API_KEY environment variable (shared fallback for all callers).
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import math
 import os
 import re
@@ -73,6 +76,36 @@ COUNTIES: dict[int, str] = {
 
 class TrafikverketError(Exception):
     """Raised for API-level errors (auth, bad query, network, timeout)."""
+
+
+NO_KEY_MESSAGE = (
+    "No Trafikverket API key available. In Intric, set this MCP server's auth mode to 'API key' and "
+    "paste your Trafikverket key (free at https://data.trafikverket.se/) – or set TRAFIKVERKET_API_KEY "
+    "on the server."
+)
+
+
+def _bearer_from_request() -> str | None:
+    """Read the Bearer token Intric forwards on the current MCP request, if any."""
+    try:
+        from fastmcp.server.dependencies import get_http_headers
+
+        headers = get_http_headers(include={"authorization"})
+    except Exception:  # noqa: BLE001 – no request context (tests, CLI)
+        return None
+    value = (headers.get("authorization") or "").strip()
+    if not value:
+        return None
+    if value.lower().startswith("bearer "):
+        value = value[7:].strip()
+    return value or None
+
+
+def resolve_api_key() -> str:
+    key = _bearer_from_request() or os.environ.get("TRAFIKVERKET_API_KEY", "").strip()
+    if not key or key == "REPLACE_WITH_YOUR_KEY":
+        raise TrafikverketError(NO_KEY_MESSAGE)
+    return key
 
 
 # ── XML query builder ────────────────────────────────────────────────
@@ -153,7 +186,7 @@ def build_request(
     api_key: str | None = None,
     namespace: str | None = None,
 ) -> str:
-    key = api_key if api_key is not None else os.environ.get("TRAFIKVERKET_API_KEY", "")
+    key = api_key if api_key is not None else resolve_api_key()
     version = schemaversion or SCHEMA[objecttype]
     ns = namespace if namespace is not None else NAMESPACE.get(objecttype)
     attrs = f'objecttype="{objecttype}" schemaversion="{version}"'
@@ -200,10 +233,6 @@ async def query(
     namespace: str | None = None,
 ) -> list[dict]:
     """POST one query and return the list of objects (empty list if none)."""
-    if not os.environ.get("TRAFIKVERKET_API_KEY"):
-        raise TrafikverketError(
-            "TRAFIKVERKET_API_KEY is not set. Get a free key at https://data.trafikverket.se/"
-        )
     body = build_request(objecttype, includes, filters, limit, orderby, skip, schemaversion, namespace=namespace)
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
@@ -228,6 +257,9 @@ async def query(
 
     err = _extract_error(payload)
     if err:
+        if "Invalid authentication" in err:
+            err += (" – the Trafikverket API key was rejected. Check the key pasted in Intric's "
+                    "API key field (or TRAFIKVERKET_API_KEY on the server).")
         raise TrafikverketError(err)
     if r.status_code not in (200, 206):  # 206 = partial result (too large), still valid JSON
         snippet = (r.text or "")[:300].replace("\n", " ")
@@ -252,6 +284,9 @@ _cache_locks: dict[str, asyncio.Lock] = {}
 
 
 async def cached(key: str, ttl_seconds: float, fetch):
+    """TTL cache scoped per Trafikverket API key, so a caller with an invalid key never gets
+    data that a valid caller fetched earlier (the key is the credential)."""
+    key = hashlib.sha256(resolve_api_key().encode()).hexdigest()[:12] + ":" + key
     now = time.monotonic()
     hit = _cache.get(key)
     if hit and now - hit[0] < ttl_seconds:

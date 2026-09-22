@@ -6,7 +6,8 @@ MCP server that plugs straight into **Intric**.
 
 Ported and extended from [hniska/trafikverket-mcp](https://github.com/hniska/trafikverket-mcp)
 (TypeScript, stdio) to the Intric MCP conventions: Python + FastMCP, HTTP transport at `/mcp`,
-optional API-key auth, IP allowlist, `/health`, tools that run without confirmation prompts.
+Intric `api_key` auth mode (the Trafikverket key is pasted in Intric and forwarded per request),
+IP allowlist, `/health`, tools that run without confirmation prompts.
 
 ## Tools
 
@@ -34,7 +35,7 @@ and turns API failures into a plain `Error: …` message.
 python3.12 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# put your free Trafikverket key in TRAFIKVERKET_API_KEY  (https://data.trafikverket.se/)
+# for local testing put your free Trafikverket key in TRAFIKVERKET_API_KEY (https://data.trafikverket.se/)
 
 python3 test_tools.py            # live verification against Trafikverket – must print ALL PASSED
 pytest -q                        # offline unit tests
@@ -45,33 +46,32 @@ curl http://localhost:8000/health   # {"status":"ok",...}
 
 ## Connect to Intric
 
-1. Deploy (Kubernetes via `kustomize/trafikverket-mcp/`, Railway via `railway.json`, or the `Dockerfile`)
-   with `TRAFIKVERKET_API_KEY` set.
+1. Deploy (Kubernetes via `kustomize/trafikverket-mcp/`, Railway via `railway.json`, or the `Dockerfile`).
+   **No environment variables are required.**
 2. In Intric: **Settings → MCP servers → Add**
    * URL: `https://<your-public-host>/mcp`  (the path **must** end with `/mcp`)
-   * Api Key: leave empty – unless you set `MCP_API_KEY` on the server, in which case paste that same value.
+   * Auth mode: **API key**
+   * API key: your **Trafikverket** API key (free at https://data.trafikverket.se/)
 3. Ask: *"Hur är vädret på E4 vid Uppsala just nu?"* – `get_weather_station` should run without a prompt.
 
-**Access control.** By default the server is open: anyone who knows the URL can call it (it only
-exposes public Trafikverket data, but calls count against your Trafikverket key). To lock it, set
-`MCP_API_KEY` to any string on the server and enter the same string as the Api Key in Intric.
-`ALLOWED_IPS` can additionally restrict callers by IP.
-
-For local testing expose the port with e.g. `ngrok http 8000` and use `https://<ngrok-host>/mcp`.
+**How auth works.** Intric sends the API key you pasted as `Authorization: Bearer <key>` on every
+call. The server forwards that key to Trafikverket, so the Trafikverket key *is* the credential and
+nothing secret has to be stored on the server. Anyone calling the server without a valid Trafikverket
+key gets a clear error and no data. If you prefer a shared key for all callers, set
+`TRAFIKVERKET_API_KEY` on the server and use auth mode **None** in Intric instead.
 
 ## Environment variables
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `TRAFIKVERKET_API_KEY` | yes | – | Free key from data.trafikverket.se |
-| `MCP_API_KEY` | no | – (open) | If set, Intric must send it as the Api Key |
+| `TRAFIKVERKET_API_KEY` | no | – | Shared fallback key, used only when a request carries no Bearer token |
 | `ALLOWED_IPS` | no | `*` | Comma-separated allowlist (honours `X-Forwarded-For`) |
 | `MCP_ICON_URL` | no | GitHub raw URL of `icon.png` | Icon shown in Intric – must be an absolute public URL |
 
 ## Project layout
 
 ```
-server.py                 FastMCP app: optional API key, IP allowlist, metadata, /health, /mcp
+server.py                 FastMCP app: IP allowlist, metadata, /health, /mcp (key forwarded per request)
 tools_trafikverket.py     12 tool implementations (formatted text, row caps, decision-tree docstrings)
 trafikverket_client.py    XML query builder + JSON response handling + TTL cache + geo helpers
 test_tools.py             Live verification runner (exit 0 = done)

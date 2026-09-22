@@ -6,11 +6,16 @@ Run:
 MCP endpoint:   http://<host>:8000/mcp      (paste "<public-url>/mcp" into Intric)
 Health:         http://<host>:8000/health
 
-Environment (.env):
-    TRAFIKVERKET_API_KEY      – free key from https://data.trafikverket.se/   (required)
-    MCP_API_KEY               – optional. If set, Intric must send it as the Api Key (Bearer token).
-                                If unset the server is open (no auth).
+Authentication model (Intric auth mode "API key"):
+    The Trafikverket API key itself is the credential. Paste it into Intric's API key field; Intric
+    sends it as "Authorization: Bearer <key>" and the server forwards it to Trafikverket per request.
+    Nothing secret has to live on the server.
+
+Environment (all optional):
+    TRAFIKVERKET_API_KEY      – shared fallback key used when a request carries no Bearer token
+                                (lets Intric auth mode "None" work too)
     ALLOWED_IPS               – comma-separated allowlist, default "*"
+    MCP_ICON_URL              – override the icon URL shown in Intric
 """
 
 import logging
@@ -19,7 +24,6 @@ import os
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
-from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 from mcp.server.fastmcp import Icon
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -43,23 +47,14 @@ from tools_trafikverket import (  # noqa: E402
     list_weather_stations,
 )
 
-####### CONFIG VALIDATION #######
-
-if not os.getenv("TRAFIKVERKET_API_KEY"):
-    raise RuntimeError(
-        "TRAFIKVERKET_API_KEY is not set. Register for a free key at https://data.trafikverket.se/"
-    )
-
-####### AUTH – optional static API key (Intric 'Api Key' field) #######
+####### STARTUP INFO #######
 
 log = logging.getLogger("trafikverket-mcp")
-_api_key = os.getenv("MCP_API_KEY", "").strip()
-if _api_key:
-    # Intric sends the value as "Authorization: Bearer <MCP_API_KEY>". No token generation needed.
-    auth = StaticTokenVerifier(tokens={_api_key: {"client_id": "intric", "scopes": []}})
+if os.getenv("TRAFIKVERKET_API_KEY", "").strip():
+    log.info("TRAFIKVERKET_API_KEY set – used as fallback when Intric sends no API key")
 else:
-    auth = None
-    log.warning("MCP_API_KEY not set – server runs WITHOUT authentication (set ALLOWED_IPS to restrict access)")
+    log.warning("TRAFIKVERKET_API_KEY not set – every request must carry the Trafikverket key as a Bearer "
+                "token (Intric auth mode 'API key')")
 
 ####### CUSTOM MIDDLEWARE – IP allowlist #######
 
@@ -169,7 +164,6 @@ mcp = FastMCP(
     version=VERSION,
     website_url=WEBSITE_URL,
     icons=[icon],
-    auth=auth,
 )
 
 ####### TOOLS – all run without user confirmation in Intric #######

@@ -17,7 +17,7 @@ spec:
           ports:
             - containerPort: 8000
           envFrom:
-            - secretRef: { name: trafikverket-mcp-secrets }
+            - secretRef: { name: trafikverket-mcp-secrets, optional: true }
           env:
             - { name: ALLOWED_IPS, value: "*" }
           readinessProbe:
